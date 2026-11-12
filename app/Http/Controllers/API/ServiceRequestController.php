@@ -23,6 +23,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
+
 
 class ServiceRequestController extends Controller
 {
@@ -45,37 +47,94 @@ class ServiceRequestController extends Controller
         return RequestActivityResource::collection($activities);
     }
 
-    /**
-     * List requests based on user role.
-     */
-    public function index(Request $request)
-    {
-        $user = $request->user();
+    
+/**
+ * List requests based on user role, with search, filtering and sorting.
+ */
+public function index(Request $request)
+{
+    $validated = $request->validate([
+        'search' => ['nullable', 'string', 'max:150'],
 
-        $query = ServiceRequest::query()
-            ->with(['employee', 'assignedUser'])
-            ->latest();
+        'status' => [
+            'nullable',
+            Rule::in(array_map(
+                fn ($status) => $status->value,
+                RequestStatus::cases()
+            )),
+        ],
 
-        if ($user->role === UserRole::EMPLOYEE) {
-            $query->where('employee_id', $user->id);
-        } elseif ($user->role === UserRole::MANAGER) {
-            $query->whereHas('employee', function ($employeeQuery) use ($user) {
-                $employeeQuery->where('manager_id', $user->id);
-            });
-        } elseif ($user->role === UserRole::OPERATIONS) {
-            $query->whereIn('status', [
-                RequestStatus::APPROVED->value,
-                RequestStatus::IN_PROGRESS->value,
-                RequestStatus::COMPLETED->value,
-            ]);
-        } else {
-            abort(403);
-        }
+        'sort_by' => [
+            'nullable',
+            Rule::in(['created_at', 'updated_at', 'title', 'status']),
+        ],
 
-        return ServiceRequestResource::collection(
-            $query->paginate(15)
-        );
+        'sort_direction' => [
+            'nullable',
+            Rule::in(['asc', 'desc']),
+        ],
+
+        'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+    ]);
+
+    $user = $request->user();
+
+    $query = ServiceRequest::query()
+        ->with(['employee', 'assignedUser']);
+
+    // Apply role-based visibility.
+    if ($user->role === UserRole::EMPLOYEE) {
+        $query->where('employee_id', $user->id);
+
+    } elseif ($user->role === UserRole::MANAGER) {
+        $query->whereHas('employee', function ($employeeQuery) use ($user) {
+            $employeeQuery->where('manager_id', $user->id);
+        });
+
+    } elseif ($user->role === UserRole::OPERATIONS) {
+        $query->whereIn('status', [
+            RequestStatus::APPROVED->value,
+            RequestStatus::IN_PROGRESS->value,
+            RequestStatus::COMPLETED->value,
+        ]);
+
+    } else {
+        abort(403);
     }
+
+    // Search by title, description or category.
+    if (!empty($validated['search'])) {
+        $search = $validated['search'];
+
+        $query->where(function ($searchQuery) use ($search) {
+            $searchTerm = '%' . strtolower($search) . '%';
+
+            $searchQuery
+                ->whereRaw('LOWER(title) LIKE ?', [$searchTerm])
+                ->orWhereRaw('LOWER(description) LIKE ?', [$searchTerm])
+                ->orWhereRaw('LOWER(category) LIKE ?', [$searchTerm]);
+        });
+    }
+
+    // Filter by request status.
+    if (!empty($validated['status'])) {
+        $query->where('status', $validated['status']);
+    }
+
+    // Apply sorting.
+    $sortBy = $validated['sort_by'] ?? 'created_at';
+    $sortDirection = $validated['sort_direction'] ?? 'desc';
+
+    $query->orderBy($sortBy, $sortDirection);
+
+    // Paginate results.
+    $perPage = $validated['per_page'] ?? 15;
+
+    return ServiceRequestResource::collection(
+        $query->paginate($perPage)->withQueryString()
+    );
+    }
+
 
     /**
      * Show one request.

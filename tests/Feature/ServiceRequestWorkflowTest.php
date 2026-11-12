@@ -362,6 +362,75 @@ public function test_assignment_queues_notification_for_assignee(): void
         ]);
     }
 
+public function test_employee_can_search_requests_by_title_case_insensitively(): void
+{
+    $employee = $this->createUser(UserRole::EMPLOYEE);
+
+    $matchingRequest = $this->createRequest($employee);
+    $matchingRequest->update(['title' => 'Development Laptop']);
+
+    $otherRequest = $this->createRequest($employee);
+    $otherRequest->update(['title' => 'Office Chair']);
+
+    Sanctum::actingAs($employee);
+
+    $this->getJson('/api/requests?search=laptop')
+        ->assertOk()
+        ->assertJsonFragment(['title' => 'Development Laptop'])
+        ->assertJsonMissing(['title' => 'Office Chair']);
+}
+
+public function test_employee_can_filter_requests_by_status(): void
+{
+    $employee = $this->createUser(UserRole::EMPLOYEE);
+
+    $this->createRequest($employee, RequestStatus::APPROVED);
+    $this->createRequest($employee, RequestStatus::DRAFT);
+
+    Sanctum::actingAs($employee);
+
+    $response = $this->getJson('/api/requests?status=approved');
+
+    $response->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.status', 'approved');
+}
+
+public function test_employee_can_sort_requests_by_title(): void
+{
+    $employee = $this->createUser(UserRole::EMPLOYEE);
+
+    $second = $this->createRequest($employee);
+    $second->update(['title' => 'Zebra Request']);
+
+    $first = $this->createRequest($employee);
+    $first->update(['title' => 'Apple Request']);
+
+    Sanctum::actingAs($employee);
+
+    $this->getJson('/api/requests?sort_by=title&sort_direction=asc')
+        ->assertOk()
+        ->assertJsonPath('data.0.title', 'Apple Request')
+        ->assertJsonPath('data.1.title', 'Zebra Request');
+}
+
+public function test_employee_can_control_pagination_size(): void
+{
+    $employee = $this->createUser(UserRole::EMPLOYEE);
+
+    for ($i = 1; $i <= 5; $i++) {
+        $this->createRequest($employee);
+    }
+
+    Sanctum::actingAs($employee);
+
+    $this->getJson('/api/requests?per_page=2')
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('meta.per_page', 2)
+        ->assertJsonPath('meta.total', 5);
+}
+
     public function test_assigned_operations_user_can_complete_work(): void
     {
         $employee = $this->createUser(UserRole::EMPLOYEE);

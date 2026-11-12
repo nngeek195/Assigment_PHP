@@ -16,11 +16,13 @@ class RequestActivityResource extends JsonResource
             'to_status' => $this->to_status,
             'comment' => $this->comment,
 
-            'actor' => [
-                'id' => $this->user->id,
-                'name' => $this->user->name,
-                'role' => $this->user->role->value,
-            ],
+            'actor' => $this->whenLoaded('user', function () {
+                return $this->user ? [
+                    'id' => $this->user->id,
+                    'name' => $this->user->name,
+                    'role' => $this->user->role->value,
+                ] : null;
+            }),
 
             'created_at' => $this->created_at,
         ];
