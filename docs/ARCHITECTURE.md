@@ -4,7 +4,7 @@ Quantix Service API is a stateless Laravel 13 REST API. A request passes through
 
 ```mermaid
 flowchart LR
-    C[Client / Postman] --> R[routes/api.php]
+    C[Client / cURL] --> R[routes/api.php]
     R --> A[auth:sanctum]
     A --> FR[Form Request<br/>validation]
     FR --> CT[ServiceRequestController]

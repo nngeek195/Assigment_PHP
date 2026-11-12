@@ -17,14 +17,15 @@ Employees raise service requests (equipment, access, IT support, ...), their man
 7. [Running the Application](#running-the-application)
 8. [Running the Queue Worker](#running-the-queue-worker)
 9. [Running the Tests](#running-the-tests)
-10. [Demo Accounts](#demo-accounts)
-11. [API Endpoints](#api-endpoints)
-12. [Role-Based Permissions](#role-based-permissions)
-13. [Request Status Workflow](#request-status-workflow)
-14. [Response & Error Format](#response--error-format)
-15. [Postman Collection](#postman-collection)
-16. [Assumptions](#assumptions)
-17. [Future Improvements](#future-improvements)
+10. [API Testing with cURL](#api-testing-with-curl)
+11. [End-to-End Workflow Script](#end-to-end-workflow-script)
+12. [Demo Accounts](#demo-accounts)
+13. [API Endpoints](#api-endpoints)
+14. [Role-Based Permissions](#role-based-permissions)
+15. [Request Status Workflow](#request-status-workflow)
+16. [Response & Error Format](#response--error-format)
+17. [Assumptions](#assumptions)
+18. [Future Improvements](#future-improvements)
 
 More detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · AI usage disclosure: [`docs/AI_USAGE.md`](docs/AI_USAGE.md)
 
@@ -140,10 +141,14 @@ php artisan migrate:fresh --seed
 ## Running the Application
 
 ```bash
-php artisan serve
+php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-The API is available at `http://127.0.0.1:8000/api`.
+The API is available at `http://127.0.0.1:8000/api`. Check that it is up:
+
+```bash
+curl -i http://127.0.0.1:8000/up
+```
 
 Always send `Accept: application/json`, and for protected routes `Authorization: Bearer <token>`.
 
@@ -165,15 +170,68 @@ Tests use an in-memory SQLite database (configured in `phpunit.xml`), so they ne
 php artisan test
 ```
 
+The suite (`tests/Feature/ServiceRequestWorkflowTest.php`) has 26 tests covering the full workflow, role permissions, invalid transitions, notifications, search, filtering, sorting and pagination.
+
+Run a single test or a group by name:
+
+```bash
+php artisan test --filter=test_manager_can_approve_direct_report_request
+php artisan test --filter=notification
+```
+
 Code style check:
 
 ```bash
 vendor/bin/pint --test
 ```
 
+## API Testing with cURL
+
+[`docs/API_TESTING.md`](docs/API_TESTING.md) contains ready-to-run cURL commands for every endpoint: authentication, the employee, manager and Operations workflows, search and pagination, and negative tests (401 / 403 / 422) with the expected status code for each.
+
+Requirements: `curl`, and `jq` to save tokens and ids into shell variables.
+
+1. Start the server (see [Running the Application](#running-the-application)).
+2. In another terminal, set the base URL and enter the demo password (it is not echoed or saved):
+
+   ```bash
+   BASE_URL="http://127.0.0.1:8000"
+   read -rsp "Demo password: " DEMO_PASSWORD; echo
+   export DEMO_PASSWORD
+   ```
+
+3. Follow the guide section by section in the same terminal. Tokens are stored in shell variables (`EMPLOYEE_TOKEN`, `MANAGER_TOKEN`, `OPERATIONS_TOKEN`, ...) and sent as `Authorization: Bearer $EMPLOYEE_TOKEN`.
+
+Running the whole guide once creates three service requests. The negative tests use seeded requests that the API refuses to change.
+
+## End-to-End Workflow Script
+
+[`docs/scripts/test-workflow.sh`](docs/scripts/test-workflow.sh) runs the complete lifecycle against a running server and stops at the first unexpected HTTP status:
+
+employee creates → employee submits → manager approves → Operations assigns to a second Operations user → assignee starts → assignee completes → activity history (6 entries) is checked.
+
+```bash
+export DEMO_PASSWORD='<demo password from the table below>'
+bash docs/scripts/test-workflow.sh
+```
+
+The script exits with `0` when every step passes and `1` otherwise. It creates one service request and logs out every token it created.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DEMO_PASSWORD` | *(required)* | Password used for all demo accounts |
+| `BASE_URL` | `http://127.0.0.1:8000` | API host |
+| `EMPLOYEE_EMAIL` | `employee1@quantix.test` | Creates and submits the request |
+| `MANAGER_EMAIL` | `manager@quantix.test` | Approves it |
+| `OPERATIONS_EMAIL` | `operations@quantix.test` | Assigns it |
+| `ASSIGNEE_EMAIL` | `operations2@quantix.test` | Starts and completes it |
+| `EMPLOYEE_PASSWORD`, `MANAGER_PASSWORD`, `OPERATIONS_PASSWORD`, `ASSIGNEE_PASSWORD` | `DEMO_PASSWORD` | Per-user passwords, if they differ |
+
+Requires `curl` and `php`. `jq` is used when installed; otherwise PHP parses the JSON.
+
 ## Demo Accounts
 
-Created by `php artisan db:seed`. All passwords are **`Password@123`**.
+Created by `php artisan db:seed` (`database/seeders/UserSeeder.php`). These are local demo accounts only; all of them share the password **`Password@123`**.
 
 | Name | Email | Role | Reports to |
 |---|---|---|---|
@@ -200,7 +258,7 @@ Base URL: `/api`. All endpoints except `POST /login` require `Authorization: Bea
 **Login request**
 
 ```json
-{ "email": "employee1@quantix.test", "password": "Password@123" }
+{ "email": "employee1@quantix.test", "password": "<demo password - see Demo Accounts>" }
 ```
 
 **Login response `200`**
@@ -364,15 +422,6 @@ Errors on `/api/*` are returned as JSON (configured in `bootstrap/app.php`).
 ```
 
 Success responses: auth endpoints return `{ "success": true, "message": ..., "data": ... }`; request endpoints return Laravel API resources (`{ "data": ... }`); adding a comment returns `{ "message": ..., "data": ... }` with status `201`; creating a request returns `201`.
-
-## Postman Collection
-
-Import `postman/Quantix-Service-API.postman_collection.json`.
-
-- Collection variables: `base_url` (default `http://127.0.0.1:8000/api`), `token`, `request_id`, `operations_user_id`.
-- The **Login** request automatically saves the returned token into `token`; all other requests use Bearer auth with `{{token}}`.
-- **Create request** saves the new id into `request_id`.
-- Log in as the right role before each workflow step (employee → manager → operations).
 
 ## Assumptions
 
