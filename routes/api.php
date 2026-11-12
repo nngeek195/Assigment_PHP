@@ -27,4 +27,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/requests/{serviceRequest}/status', [ServiceRequestController::class, 'changeStatus']);
 
     Route::post('/requests/{serviceRequest}/comments', [ServiceRequestController::class, 'comment']);
+
+    Route::get('/requests/{serviceRequest}/activities',[ServiceRequestController::class, 'activities']
+);
 });

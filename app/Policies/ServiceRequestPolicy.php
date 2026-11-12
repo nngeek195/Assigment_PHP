@@ -49,15 +49,11 @@ class ServiceRequestPolicy
             ], true);
     }
 
-    public function submit(User $user, ServiceRequest $request): bool
-    {
-        return $user->role === UserRole::EMPLOYEE
-            && $request->employee_id === $user->id
-            && in_array($request->status, [
-                RequestStatus::DRAFT,
-                RequestStatus::RETURNED,
-            ], true);
-    }
+    public function submit(User $user, ServiceRequest $serviceRequest): bool
+        {
+            return $user->role === UserRole::EMPLOYEE
+                && $serviceRequest->employee_id === $user->id;
+        }
 
     public function decide(User $user, ServiceRequest $request): bool
     {

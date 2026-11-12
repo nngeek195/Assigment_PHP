@@ -3,17 +3,17 @@
 namespace App\Services;
 
 use App\Enums\RequestStatus;
+use App\Enums\UserRole;
 use App\Models\RequestActivity;
 use App\Models\ServiceRequest;
 use App\Models\User;
+use App\Notifications\RequestStatusChangedNotification;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 
 class RequestWorkflowService
 {
-    /**
-     * Define all valid request status transitions.
-     */
     private const TRANSITIONS = [
         'draft' => ['submitted'],
         'returned' => ['submitted'],
@@ -24,9 +24,6 @@ class RequestWorkflowService
         'completed' => [],
     ];
 
-    /**
-     * Change the status of a service request.
-     */
     public function transition(
         ServiceRequest $request,
         User $actor,
@@ -34,65 +31,96 @@ class RequestWorkflowService
         ?string $comment = null
     ): ServiceRequest {
 
-        return DB::transaction(function () use (
+        // Save both the updated request and its previous status.
+        [$updatedRequest, $fromStatus] = DB::transaction(function () use (
             $request,
             $actor,
             $newStatus,
             $comment
         ) {
-            // Lock the database record during the transition.
-            $request = ServiceRequest::query()
+            $lockedRequest = ServiceRequest::query()
                 ->lockForUpdate()
                 ->findOrFail($request->id);
 
-            $currentStatus = $request->status;
+            $oldStatus = $lockedRequest->status;
 
-            // Check whether the requested transition is allowed.
-            $allowedTransitions = self::TRANSITIONS[
-                $currentStatus->value
-            ] ?? [];
+            $allowedTransitions = self::TRANSITIONS[$oldStatus->value] ?? [];
 
             if (!in_array($newStatus->value, $allowedTransitions, true)) {
                 throw ValidationException::withMessages([
                     'status' => [
-                        "Cannot change status from {$currentStatus->value} to {$newStatus->value}.",
+                        "Cannot change status from {$oldStatus->value} to {$newStatus->value}.",
                     ],
                 ]);
             }
 
-            // Update request status.
-            $request->status = $newStatus;
+            $lockedRequest->status = $newStatus;
 
             if ($newStatus === RequestStatus::SUBMITTED) {
-                $request->submitted_at = now();
+                $lockedRequest->submitted_at = now();
             }
 
             if ($newStatus === RequestStatus::COMPLETED) {
-                $request->completed_at = now();
+                $lockedRequest->completed_at = now();
             }
 
-            $request->save();
+            $lockedRequest->save();
 
-            // Store the activity history.
             RequestActivity::create([
-                'service_request_id' => $request->id,
+                'service_request_id' => $lockedRequest->id,
                 'user_id' => $actor->id,
                 'action' => 'status_changed',
-                'from_status' => $currentStatus->value,
+                'from_status' => $oldStatus->value,
                 'to_status' => $newStatus->value,
                 'comment' => $comment,
             ]);
 
-            return $request->refresh();
+            return [
+                $lockedRequest,
+                $oldStatus->value,
+            ];
         });
+
+        // Notify users after the transaction succeeds.
+        $updatedRequest->load('employee.manager');
+
+        $recipients = collect();
+
+        if ($newStatus === RequestStatus::SUBMITTED) {
+            if ($updatedRequest->employee->manager) {
+                $recipients->push($updatedRequest->employee->manager);
+            }
+        } elseif ($newStatus === RequestStatus::APPROVED) {
+            $recipients = User::where(
+                'role',
+                UserRole::OPERATIONS->value
+            )->get();
+        } else {
+            $recipients->push($updatedRequest->employee);
+        }
+
+        $recipients = $recipients->unique('id')->values();
+
+        if ($recipients->isNotEmpty()) {
+            Notification::send(
+                $recipients,
+                new RequestStatusChangedNotification(
+                    requestId: $updatedRequest->id,
+                    requestTitle: $updatedRequest->title,
+                    action: 'status_changed',
+                    fromStatus: $fromStatus,
+                    toStatus: $newStatus->value,
+                    actorName: $actor->name,
+                    message: "Request #{$updatedRequest->id} changed to {$newStatus->value}."
+                )
+            );
+        }
+
+        return $updatedRequest->refresh();
     }
 
-    /**
-     * Return all valid next statuses.
-     */
-    public function availableTransitions(
-        ServiceRequest $request
-    ): array {
+    public function availableTransitions(ServiceRequest $request): array
+    {
         return self::TRANSITIONS[$request->status->value] ?? [];
     }
 }

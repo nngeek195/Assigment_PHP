@@ -19,16 +19,31 @@ use App\Services\RequestWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use App\Notifications\RequestStatusChangedNotification;
+use Illuminate\Support\Facades\Notification;
+use App\Http\Resources\RequestActivityResource;
+
 
 class ServiceRequestController extends Controller
 {
+    
     public function __construct(
         private RequestWorkflowService $workflow
     ) {}
 
-    /**
-     * List requests visible to the authenticated user.
-     */
+    public function activities(ServiceRequest $serviceRequest)
+    {
+    Gate::authorize('view', $serviceRequest);
+
+    $activities = $serviceRequest->activities()
+        ->with('user')
+        ->latest()
+        ->paginate(20);
+
+    return RequestActivityResource::collection($activities);
+    }
+    
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -45,9 +60,9 @@ class ServiceRequestController extends Controller
             });
         } elseif ($user->role === UserRole::OPERATIONS) {
             $query->whereIn('status', [
-                RequestStatus::APPROVED,
-                RequestStatus::IN_PROGRESS,
-                RequestStatus::COMPLETED,
+                RequestStatus::APPROVED->value,
+                RequestStatus::IN_PROGRESS->value,
+                RequestStatus::COMPLETED->value,
             ]);
         } else {
             abort(403);
@@ -114,19 +129,17 @@ class ServiceRequestController extends Controller
      * Employee submits a draft or returned request.
      */
     public function submit(ServiceRequest $serviceRequest)
-    {
-        Gate::authorize('submit', $serviceRequest);
+        {
+            Gate::authorize('submit', $serviceRequest);
 
-        $serviceRequest = $this->workflow->transition(
-            $serviceRequest,
-            request()->user(),
-            RequestStatus::SUBMITTED
-        );
+            $updatedRequest = $this->workflow->transition(
+                $serviceRequest,
+                request()->user(),
+                RequestStatus::SUBMITTED
+            );
 
-        $serviceRequest->load(['employee', 'assignedUser']);
-
-        return new ServiceRequestResource($serviceRequest);
-    }
+            return new ServiceRequestResource($updatedRequest);
+        }
 
     /**
      * Manager approves, rejects, or returns a request.
@@ -185,6 +198,18 @@ class ServiceRequestController extends Controller
                 'comment' => 'Assigned to ' . $assignee->name,
             ]);
         });
+        Notification::send(
+            [$assignee],
+            new RequestStatusChangedNotification(
+                requestId: $serviceRequest->id,
+                requestTitle: $serviceRequest->title,
+                action: 'assigned',
+                fromStatus: $serviceRequest->status->value,
+                toStatus: $serviceRequest->status->value,
+                actorName: $request->user()->name,
+                message: "You have been assigned request #{$serviceRequest->id}."
+            )
+        );
 
         $serviceRequest->refresh()->load(['employee', 'assignedUser']);
 
