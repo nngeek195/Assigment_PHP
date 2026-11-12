@@ -73,13 +73,13 @@ class RequestActivitySeeder extends Seeder
                 'Request approved.'
             );
 
-            if (!$request->assigned_to) {
+            if (! $request->assigned_to) {
                 continue;
             }
 
             $assignee = User::find($request->assigned_to);
 
-            if (!$assignee) {
+            if (! $assignee) {
                 continue;
             }
 
@@ -89,7 +89,7 @@ class RequestActivitySeeder extends Seeder
                 'assigned',
                 'approved',
                 'approved',
-                'Request assigned to ' . $assignee->name . '.'
+                'Request assigned to '.$assignee->name.'.'
             );
 
             if (in_array($status, ['in_progress', 'completed'], true)) {

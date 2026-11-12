@@ -1,0 +1,708 @@
+{
+  "info": {
+    "name": "Quantix Service API",
+    "_postman_id": "8d3c1f2e-6a4b-4c1d-9f0e-5a1b2c3d4e5f",
+    "description": "Service request workflow API (Employee → Manager → Operations).\n\n**Setup**\n1. Set `base_url` (default `http://127.0.0.1:8000/api`).\n2. Set `demo_password` to the seeded demo password (see README).\n3. Run a *Login* request — the token is saved automatically into `token`.\n4. *Create request* saves the new id into `request_id`.\n\nSwitch user by running the matching Login request before each workflow step: Employee (create/update/submit) → Manager (decision) → Operations (assign, start, complete).\n\nAll protected requests use Bearer auth with `{{token}}`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000/api"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "demo_password",
+      "value": ""
+    },
+    {
+      "key": "request_id",
+      "value": "1"
+    },
+    {
+      "key": "operations_user_id",
+      "value": "4"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Login (Employee)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "description": "Log in as Alex Employee.\n\nSaves `data.token` into the `token` variable. Replace `{{demo_password}}` or set the `demo_password` variable (seeded demo password is documented in README).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"employee1@quantix.test\",\n  \"password\": \"{{demo_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json.data && json.data.token) {",
+                  "    pm.collectionVariables.set('token', json.data.token);",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('token', json.data.token);",
+                  "    }",
+                  "    console.log('Saved token for ' + json.data.user.email + ' (' + json.data.user.role + ')');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (Manager)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "description": "Log in as John Manager (manager of both seeded employees).\n\nSaves `data.token` into the `token` variable. Replace `{{demo_password}}` or set the `demo_password` variable (seeded demo password is documented in README).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"manager@quantix.test\",\n  \"password\": \"{{demo_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json.data && json.data.token) {",
+                  "    pm.collectionVariables.set('token', json.data.token);",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('token', json.data.token);",
+                  "    }",
+                  "    console.log('Saved token for ' + json.data.user.email + ' (' + json.data.user.role + ')');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (Operations)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "description": "Log in as David Operations (seeded user id 4).\n\nSaves `data.token` into the `token` variable. Replace `{{demo_password}}` or set the `demo_password` variable (seeded demo password is documented in README).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"operations@quantix.test\",\n  \"password\": \"{{demo_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json.data && json.data.token) {",
+                  "    pm.collectionVariables.set('token', json.data.token);",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('token', json.data.token);",
+                  "    }",
+                  "    console.log('Saved token for ' + json.data.user.email + ' (' + json.data.user.role + ')');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current user",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "description": "Returns the authenticated user (id, name, email, role)."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "logout"
+              ]
+            },
+            "description": "Revokes the current access token. Subsequent calls with the same token return 401."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Service Requests",
+      "item": [
+        {
+          "name": "List requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests?search=laptop&status=submitted&sort_by=created_at&sort_direction=desc&per_page=15",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "laptop",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "submitted",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_by",
+                  "value": "created_at",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_direction",
+                  "value": "desc",
+                  "disabled": true
+                },
+                {
+                  "key": "per_page",
+                  "value": "15",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Role-scoped list.\n- Employee: own requests\n- Manager: requests of direct reports\n- Operations: approved / in_progress / completed\n\nOptional query params: `search` (title/description/category, case-insensitive), `status`, `sort_by` (created_at|updated_at|title|status), `sort_direction` (asc|desc), `per_page` (1-100, default 15). Disabled params are examples — enable as needed."
+          }
+        },
+        {
+          "name": "Create request (Employee)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests"
+              ]
+            },
+            "description": "Employee only. Creates a request in `draft` status and records a `created` activity. Saves the new id into `request_id`.\n\nRules: title required ≤150, description required, category required ≤100.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Development Laptop Request\",\n  \"description\": \"Requesting a laptop for software development work.\",\n  \"category\": \"IT Equipment\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Request created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json.data && json.data.id) {",
+                  "    pm.collectionVariables.set('request_id', json.data.id);",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('request_id', json.data.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Show request",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests/{{request_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                "{{request_id}}"
+              ]
+            },
+            "description": "Returns one request with employee, assigned user and comments. Allowed for the owner, the owner's manager, and Operations once approved."
+          }
+        },
+        {
+          "name": "Update request (Employee)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests/{{request_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                "{{request_id}}"
+              ]
+            },
+            "description": "Owner only, while status is `draft` or `returned`. All fields optional (title ≤150, description, category ≤100).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Development Laptop Request (16GB RAM)\",\n  \"description\": \"Updated: laptop with at least 16GB RAM for development.\",\n  \"category\": \"IT Equipment\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Submit request (Employee)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests/{{request_id}}/submit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                "{{request_id}}",
+                "submit"
+              ]
+            },
+            "description": "Owner only. Transition `draft|returned → submitted`. Notifies the employee's manager."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Manager",
+      "item": [
+        {
+          "name": "Manager decision",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests/{{request_id}}/decision",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                "{{request_id}}",
+                "decision"
+              ]
+            },
+            "description": "The employee's manager only, while status is `submitted`.\n\n`decision`: `approved` | `rejected` | `returned`; `comment` optional (≤2000).\n\nApproved → notifies all Operations users; rejected/returned → notifies the employee.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approved\",\n  \"comment\": \"Approved for IT equipment requirements.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Operations",
+      "item": [
+        {
+          "name": "Assign operations owner",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests/{{request_id}}/assign",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                "{{request_id}}",
+                "assign"
+              ]
+            },
+            "description": "Operations only, while status is `approved`. `assigned_to` must be the id of a user with the operations role. Status stays `approved`; records an `assigned` activity and notifies the assignee.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assigned_to\": {{operations_user_id}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Start work",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests/{{request_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                "{{request_id}}",
+                "status"
+              ]
+            },
+            "description": "Assigned Operations user only. Transition `approved → in_progress`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\",\n  \"comment\": \"Work started.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Complete work",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests/{{request_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                "{{request_id}}",
+                "status"
+              ]
+            },
+            "description": "Assigned Operations user only. Transition `in_progress → completed`; sets `completed_at`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"completed\",\n  \"comment\": \"Laptop delivered and configured.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Comments & History",
+      "item": [
+        {
+          "name": "Add comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests/{{request_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                "{{request_id}}",
+                "comments"
+              ]
+            },
+            "description": "Allowed for the owner, the owner's manager, or the assigned Operations user. `body` required ≤5000. Returns 201.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Please deliver the laptop to the 3rd floor.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "View activity history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/requests/{{request_id}}/activities",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                "{{request_id}}",
+                "activities"
+              ]
+            },
+            "description": "Audit trail (newest first, 20 per page): `created`, `status_changed`, `assigned` entries with actor, from/to status and comment. Same visibility as Show request."
+          }
+        }
+      ]
+    }
+  ]
+}

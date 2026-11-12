@@ -21,18 +21,15 @@ class ServiceRequestPolicy
     public function view(User $user, ServiceRequest $request): bool
     {
         return match ($user->role) {
-            UserRole::EMPLOYEE =>
-                $request->employee_id === $user->id,
+            UserRole::EMPLOYEE => $request->employee_id === $user->id,
 
-            UserRole::MANAGER =>
-                $request->employee?->manager_id === $user->id,
+            UserRole::MANAGER => $request->employee?->manager_id === $user->id,
 
-            UserRole::OPERATIONS =>
-                in_array($request->status, [
-                    RequestStatus::APPROVED,
-                    RequestStatus::IN_PROGRESS,
-                    RequestStatus::COMPLETED,
-                ], true),
+            UserRole::OPERATIONS => in_array($request->status, [
+                RequestStatus::APPROVED,
+                RequestStatus::IN_PROGRESS,
+                RequestStatus::COMPLETED,
+            ], true),
 
             default => false,
         };
@@ -85,14 +82,11 @@ class ServiceRequestPolicy
     public function comment(User $user, ServiceRequest $request): bool
     {
         return match ($user->role) {
-            UserRole::EMPLOYEE =>
-                $request->employee_id === $user->id,
+            UserRole::EMPLOYEE => $request->employee_id === $user->id,
 
-            UserRole::MANAGER =>
-                $request->employee?->manager_id === $user->id,
+            UserRole::MANAGER => $request->employee?->manager_id === $user->id,
 
-            UserRole::OPERATIONS =>
-                $request->assigned_to === $user->id,
+            UserRole::OPERATIONS => $request->assigned_to === $user->id,
 
             default => false,
         };

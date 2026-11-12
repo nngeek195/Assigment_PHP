@@ -46,7 +46,7 @@ class RequestWorkflowService
 
             $allowedTransitions = self::TRANSITIONS[$oldStatus->value] ?? [];
 
-            if (!in_array($newStatus->value, $allowedTransitions, true)) {
+            if (! in_array($newStatus->value, $allowedTransitions, true)) {
                 throw ValidationException::withMessages([
                     'status' => [
                         "Cannot change status from {$oldStatus->value} to {$newStatus->value}.",

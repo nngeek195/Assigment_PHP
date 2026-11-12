@@ -7,105 +7,105 @@ use App\Enums\UserRole;
 use App\Models\RequestActivity;
 use App\Models\ServiceRequest;
 use App\Models\User;
+use App\Notifications\RequestStatusChangedNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
-use Illuminate\Support\Facades\Notification;
-use App\Notifications\RequestStatusChangedNotification;
 
 class ServiceRequestWorkflowTest extends TestCase
 {
     use RefreshDatabase;
-    
-public function test_submission_queues_notification_for_manager(): void
-{
-    Notification::fake();
 
-    $manager = $this->createUser(UserRole::MANAGER);
-    $employee = $this->createUser(
-        UserRole::EMPLOYEE,
-        $manager->id
-    );
+    public function test_submission_queues_notification_for_manager(): void
+    {
+        Notification::fake();
 
-    $request = $this->createRequest($employee);
+        $manager = $this->createUser(UserRole::MANAGER);
+        $employee = $this->createUser(
+            UserRole::EMPLOYEE,
+            $manager->id
+        );
 
-    Sanctum::actingAs($employee);
+        $request = $this->createRequest($employee);
 
-    $this->postJson("/api/requests/{$request->id}/submit")
-        ->assertOk();
+        Sanctum::actingAs($employee);
 
-    Notification::assertSentTo(
-        $manager,
-        RequestStatusChangedNotification::class,
-        function ($notification) use ($request) {
-            return $notification->toStatus === 'submitted';
-        }
-    );
-}
+        $this->postJson("/api/requests/{$request->id}/submit")
+            ->assertOk();
 
-public function test_approval_queues_notification_for_operations(): void
-{
-    Notification::fake();
+        Notification::assertSentTo(
+            $manager,
+            RequestStatusChangedNotification::class,
+            function ($notification) {
+                return $notification->toStatus === 'submitted';
+            }
+        );
+    }
 
-    $manager = $this->createUser(UserRole::MANAGER);
-    $operations = $this->createUser(UserRole::OPERATIONS);
+    public function test_approval_queues_notification_for_operations(): void
+    {
+        Notification::fake();
 
-    $employee = $this->createUser(
-        UserRole::EMPLOYEE,
-        $manager->id
-    );
+        $manager = $this->createUser(UserRole::MANAGER);
+        $operations = $this->createUser(UserRole::OPERATIONS);
 
-    $request = $this->createRequest(
-        $employee,
-        RequestStatus::SUBMITTED
-    );
+        $employee = $this->createUser(
+            UserRole::EMPLOYEE,
+            $manager->id
+        );
 
-    Sanctum::actingAs($manager);
+        $request = $this->createRequest(
+            $employee,
+            RequestStatus::SUBMITTED
+        );
 
-    $this->postJson("/api/requests/{$request->id}/decision", [
-        'decision' => 'approved',
-    ])->assertOk();
+        Sanctum::actingAs($manager);
 
-    Notification::assertSentTo(
-        $operations,
-        RequestStatusChangedNotification::class,
-        function ($notification) {
-            return $notification->toStatus === 'approved';
-        }
-    );
-}
+        $this->postJson("/api/requests/{$request->id}/decision", [
+            'decision' => 'approved',
+        ])->assertOk();
 
-public function test_assignment_queues_notification_for_assignee(): void
-{
-    Notification::fake();
+        Notification::assertSentTo(
+            $operations,
+            RequestStatusChangedNotification::class,
+            function ($notification) {
+                return $notification->toStatus === 'approved';
+            }
+        );
+    }
 
-    $employee = $this->createUser(UserRole::EMPLOYEE);
-    $operations = $this->createUser(UserRole::OPERATIONS);
+    public function test_assignment_queues_notification_for_assignee(): void
+    {
+        Notification::fake();
 
-    $request = $this->createApprovedRequest($employee);
+        $employee = $this->createUser(UserRole::EMPLOYEE);
+        $operations = $this->createUser(UserRole::OPERATIONS);
 
-    Sanctum::actingAs($operations);
+        $request = $this->createApprovedRequest($employee);
 
-    $this->postJson("/api/requests/{$request->id}/assign", [
-        'assigned_to' => $operations->id,
-    ])->assertOk();
+        Sanctum::actingAs($operations);
 
-    Notification::assertSentTo(
-        $operations,
-        RequestStatusChangedNotification::class,
-        function ($notification) {
-            return $notification->action === 'assigned';
-        }
-    );
-}
+        $this->postJson("/api/requests/{$request->id}/assign", [
+            'assigned_to' => $operations->id,
+        ])->assertOk();
+
+        Notification::assertSentTo(
+            $operations,
+            RequestStatusChangedNotification::class,
+            function ($notification) {
+                return $notification->action === 'assigned';
+            }
+        );
+    }
 
     private function createUser(
         UserRole $role,
         ?int $managerId = null
     ): User {
         return User::create([
-            'name' => ucfirst($role->value) . ' User',
-            'email' => uniqid() . '@quantix.test',
+            'name' => ucfirst($role->value).' User',
+            'email' => uniqid().'@quantix.test',
             'password' => 'Password@123',
             'role' => $role,
             'manager_id' => $managerId,
@@ -153,6 +153,13 @@ public function test_assignment_queues_notification_for_assignee(): void
             'employee_id' => $employee->id,
             'title' => 'New laptop',
             'status' => 'draft',
+        ]);
+
+        $this->assertDatabaseHas('request_activities', [
+            'service_request_id' => $response->json('data.id'),
+            'user_id' => $employee->id,
+            'action' => 'created',
+            'to_status' => 'draft',
         ]);
     }
 
@@ -362,74 +369,118 @@ public function test_assignment_queues_notification_for_assignee(): void
         ]);
     }
 
-public function test_employee_can_search_requests_by_title_case_insensitively(): void
-{
-    $employee = $this->createUser(UserRole::EMPLOYEE);
+    public function test_unassigned_operations_user_cannot_complete_work(): void
+    {
+        $employee = $this->createUser(UserRole::EMPLOYEE);
+        $assignee = $this->createUser(UserRole::OPERATIONS);
+        $otherOperations = $this->createUser(UserRole::OPERATIONS);
 
-    $matchingRequest = $this->createRequest($employee);
-    $matchingRequest->update(['title' => 'Development Laptop']);
+        $request = $this->createRequest($employee, RequestStatus::IN_PROGRESS);
 
-    $otherRequest = $this->createRequest($employee);
-    $otherRequest->update(['title' => 'Office Chair']);
+        $request->update([
+            'assigned_to' => $assignee->id,
+        ]);
 
-    Sanctum::actingAs($employee);
+        Sanctum::actingAs($otherOperations);
 
-    $this->getJson('/api/requests?search=laptop')
-        ->assertOk()
-        ->assertJsonFragment(['title' => 'Development Laptop'])
-        ->assertJsonMissing(['title' => 'Office Chair']);
-}
+        $this->postJson("/api/requests/{$request->id}/status", [
+            'status' => 'completed',
+        ])->assertForbidden();
 
-public function test_employee_can_filter_requests_by_status(): void
-{
-    $employee = $this->createUser(UserRole::EMPLOYEE);
-
-    $this->createRequest($employee, RequestStatus::APPROVED);
-    $this->createRequest($employee, RequestStatus::DRAFT);
-
-    Sanctum::actingAs($employee);
-
-    $response = $this->getJson('/api/requests?status=approved');
-
-    $response->assertOk()
-        ->assertJsonCount(1, 'data')
-        ->assertJsonPath('data.0.status', 'approved');
-}
-
-public function test_employee_can_sort_requests_by_title(): void
-{
-    $employee = $this->createUser(UserRole::EMPLOYEE);
-
-    $second = $this->createRequest($employee);
-    $second->update(['title' => 'Zebra Request']);
-
-    $first = $this->createRequest($employee);
-    $first->update(['title' => 'Apple Request']);
-
-    Sanctum::actingAs($employee);
-
-    $this->getJson('/api/requests?sort_by=title&sort_direction=asc')
-        ->assertOk()
-        ->assertJsonPath('data.0.title', 'Apple Request')
-        ->assertJsonPath('data.1.title', 'Zebra Request');
-}
-
-public function test_employee_can_control_pagination_size(): void
-{
-    $employee = $this->createUser(UserRole::EMPLOYEE);
-
-    for ($i = 1; $i <= 5; $i++) {
-        $this->createRequest($employee);
+        $this->assertDatabaseHas('service_requests', [
+            'id' => $request->id,
+            'status' => 'in_progress',
+        ]);
     }
 
-    Sanctum::actingAs($employee);
+    public function test_api_errors_use_consistent_json_format(): void
+    {
+        $this->getJson('/api/me')
+            ->assertUnauthorized()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unauthenticated.');
 
-    $this->getJson('/api/requests?per_page=2')
-        ->assertOk()
-        ->assertJsonCount(2, 'data')
-        ->assertJsonPath('meta.per_page', 2)
-        ->assertJsonPath('meta.total', 5);
-}
+        $employee = $this->createUser(UserRole::EMPLOYEE);
+        Sanctum::actingAs($employee);
+
+        $this->postJson('/api/requests', [])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonStructure(['success', 'message', 'errors' => ['title', 'description', 'category']]);
+
+        $this->getJson('/api/requests/999999')
+            ->assertNotFound()
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_employee_can_search_requests_by_title_case_insensitively(): void
+    {
+        $employee = $this->createUser(UserRole::EMPLOYEE);
+
+        $matchingRequest = $this->createRequest($employee);
+        $matchingRequest->update(['title' => 'Development Laptop']);
+
+        $otherRequest = $this->createRequest($employee);
+        $otherRequest->update(['title' => 'Office Chair']);
+
+        Sanctum::actingAs($employee);
+
+        $this->getJson('/api/requests?search=laptop')
+            ->assertOk()
+            ->assertJsonFragment(['title' => 'Development Laptop'])
+            ->assertJsonMissing(['title' => 'Office Chair']);
+    }
+
+    public function test_employee_can_filter_requests_by_status(): void
+    {
+        $employee = $this->createUser(UserRole::EMPLOYEE);
+
+        $this->createRequest($employee, RequestStatus::APPROVED);
+        $this->createRequest($employee, RequestStatus::DRAFT);
+
+        Sanctum::actingAs($employee);
+
+        $response = $this->getJson('/api/requests?status=approved');
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.status', 'approved');
+    }
+
+    public function test_employee_can_sort_requests_by_title(): void
+    {
+        $employee = $this->createUser(UserRole::EMPLOYEE);
+
+        $second = $this->createRequest($employee);
+        $second->update(['title' => 'Zebra Request']);
+
+        $first = $this->createRequest($employee);
+        $first->update(['title' => 'Apple Request']);
+
+        Sanctum::actingAs($employee);
+
+        $this->getJson('/api/requests?sort_by=title&sort_direction=asc')
+            ->assertOk()
+            ->assertJsonPath('data.0.title', 'Apple Request')
+            ->assertJsonPath('data.1.title', 'Zebra Request');
+    }
+
+    public function test_employee_can_control_pagination_size(): void
+    {
+        $employee = $this->createUser(UserRole::EMPLOYEE);
+
+        for ($i = 1; $i <= 5; $i++) {
+            $this->createRequest($employee);
+        }
+
+        Sanctum::actingAs($employee);
+
+        $this->getJson('/api/requests?per_page=2')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('meta.per_page', 2)
+            ->assertJsonPath('meta.total', 5);
+    }
 
     public function test_assigned_operations_user_can_complete_work(): void
     {
