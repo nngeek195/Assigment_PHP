@@ -11,7 +11,11 @@ class ServiceRequestPolicy
 {
     public function viewAny(User $user): bool
     {
-        return true;
+        return in_array($user->role, [
+            UserRole::EMPLOYEE,
+            UserRole::MANAGER,
+            UserRole::OPERATIONS,
+        ], true);
     }
 
     public function view(User $user, ServiceRequest $request): bool
@@ -49,11 +53,11 @@ class ServiceRequestPolicy
             ], true);
     }
 
-    public function submit(User $user, ServiceRequest $serviceRequest): bool
-        {
-            return $user->role === UserRole::EMPLOYEE
-                && $serviceRequest->employee_id === $user->id;
-        }
+    public function submit(User $user, ServiceRequest $request): bool
+    {
+        return $user->role === UserRole::EMPLOYEE
+            && $request->employee_id === $user->id;
+    }
 
     public function decide(User $user, ServiceRequest $request): bool
     {
@@ -71,6 +75,7 @@ class ServiceRequestPolicy
     public function updateStatus(User $user, ServiceRequest $request): bool
     {
         return $user->role === UserRole::OPERATIONS
+            && $request->assigned_to === $user->id
             && in_array($request->status, [
                 RequestStatus::APPROVED,
                 RequestStatus::IN_PROGRESS,
@@ -79,8 +84,17 @@ class ServiceRequestPolicy
 
     public function comment(User $user, ServiceRequest $request): bool
     {
-        return $request->employee_id === $user->id
-            || $request->employee?->manager_id === $user->id
-            || $request->assigned_to === $user->id;
+        return match ($user->role) {
+            UserRole::EMPLOYEE =>
+                $request->employee_id === $user->id,
+
+            UserRole::MANAGER =>
+                $request->employee?->manager_id === $user->id,
+
+            UserRole::OPERATIONS =>
+                $request->assigned_to === $user->id,
+
+            default => false,
+        };
     }
 }

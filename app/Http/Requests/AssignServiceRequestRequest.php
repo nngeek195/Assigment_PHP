@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\UserRole;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -17,7 +18,9 @@ class AssignServiceRequestRequest extends FormRequest
         return [
             'assigned_to' => [
                 'required',
-                Rule::exists('users', 'id')->where('role', 'operations'),
+                'integer',
+                Rule::exists('users', 'id')
+                    ->where('role', UserRole::OPERATIONS->value),
             ],
         ];
     }

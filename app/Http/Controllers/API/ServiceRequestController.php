@@ -11,39 +11,43 @@ use App\Http\Requests\StoreRequestCommentRequest;
 use App\Http\Requests\StoreServiceRequestRequest;
 use App\Http\Requests\UpdateServiceRequestRequest;
 use App\Http\Requests\UpdateServiceRequestStatusRequest;
+use App\Http\Resources\RequestActivityResource;
 use App\Http\Resources\ServiceRequestResource;
 use App\Models\RequestActivity;
 use App\Models\ServiceRequest;
 use App\Models\User;
+use App\Notifications\RequestStatusChangedNotification;
 use App\Services\RequestWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use App\Notifications\RequestStatusChangedNotification;
 use Illuminate\Support\Facades\Notification;
-use App\Http\Resources\RequestActivityResource;
-
+use Illuminate\Validation\ValidationException;
 
 class ServiceRequestController extends Controller
 {
-    
     public function __construct(
         private RequestWorkflowService $workflow
     ) {}
 
+    /**
+     * View request activity history.
+     */
     public function activities(ServiceRequest $serviceRequest)
     {
-    Gate::authorize('view', $serviceRequest);
+        Gate::authorize('view', $serviceRequest);
 
-    $activities = $serviceRequest->activities()
-        ->with('user')
-        ->latest()
-        ->paginate(20);
+        $activities = $serviceRequest->activities()
+            ->with('user')
+            ->latest()
+            ->paginate(20);
 
-    return RequestActivityResource::collection($activities);
+        return RequestActivityResource::collection($activities);
     }
-    
 
+    /**
+     * List requests based on user role.
+     */
     public function index(Request $request)
     {
         $user = $request->user();
@@ -126,20 +130,20 @@ class ServiceRequestController extends Controller
     }
 
     /**
-     * Employee submits a draft or returned request.
+     * Employee submits their request.
      */
     public function submit(ServiceRequest $serviceRequest)
-        {
-            Gate::authorize('submit', $serviceRequest);
+    {
+        Gate::authorize('submit', $serviceRequest);
 
-            $updatedRequest = $this->workflow->transition(
-                $serviceRequest,
-                request()->user(),
-                RequestStatus::SUBMITTED
-            );
+        $updatedRequest = $this->workflow->transition(
+            $serviceRequest,
+            request()->user(),
+            RequestStatus::SUBMITTED
+        );
 
-            return new ServiceRequestResource($updatedRequest);
-        }
+        return new ServiceRequestResource($updatedRequest);
+    }
 
     /**
      * Manager approves, rejects, or returns a request.
@@ -165,7 +169,7 @@ class ServiceRequestController extends Controller
     }
 
     /**
-     * Operations assigns an approved request to an operations user.
+     * Operations assigns an approved request to an Operations user.
      */
     public function assign(
         AssignServiceRequestRequest $request,
@@ -175,7 +179,9 @@ class ServiceRequestController extends Controller
 
         $data = $request->validated();
 
-        $assignee = User::findOrFail($data['assigned_to']);
+        $assignee = User::query()
+            ->where('role', UserRole::OPERATIONS->value)
+            ->findOrFail($data['assigned_to']);
 
         DB::transaction(function () use (
             $serviceRequest,
@@ -185,6 +191,12 @@ class ServiceRequestController extends Controller
             $lockedRequest = ServiceRequest::query()
                 ->lockForUpdate()
                 ->findOrFail($serviceRequest->id);
+
+            if ($lockedRequest->status !== RequestStatus::APPROVED) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only approved requests can be assigned.'],
+                ]);
+            }
 
             $lockedRequest->assigned_to = $assignee->id;
             $lockedRequest->save();
@@ -198,6 +210,9 @@ class ServiceRequestController extends Controller
                 'comment' => 'Assigned to ' . $assignee->name,
             ]);
         });
+
+        $serviceRequest->refresh()->load(['employee', 'assignedUser']);
+
         Notification::send(
             [$assignee],
             new RequestStatusChangedNotification(
@@ -211,13 +226,11 @@ class ServiceRequestController extends Controller
             )
         );
 
-        $serviceRequest->refresh()->load(['employee', 'assignedUser']);
-
         return new ServiceRequestResource($serviceRequest);
     }
 
     /**
-     * Operations starts or completes work.
+     * Operations starts or completes assigned work.
      */
     public function changeStatus(
         UpdateServiceRequestStatusRequest $request,
@@ -231,11 +244,11 @@ class ServiceRequestController extends Controller
 
         if (
             $newStatus === RequestStatus::IN_PROGRESS &&
-            $serviceRequest->assigned_to === null
+            $serviceRequest->assigned_to !== $request->user()->id
         ) {
             return response()->json([
-                'message' => 'Assign an operations owner before starting work.',
-            ], 422);
+                'message' => 'Only the assigned Operations user can start this request.',
+            ], 403);
         }
 
         $serviceRequest = $this->workflow->transition(
